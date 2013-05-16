@@ -39,7 +39,8 @@ static void keypress(XKeyEvent *ev);
 static void match(void);
 static size_t nextrune(int inc);
 static void paste(void);
-static void readstdin(void);
+static int locate(const char*, Item **);
+static void clear(const int, Item**);
 static void run(void);
 static void setup(void);
 static void usage(void);
@@ -60,8 +61,9 @@ static unsigned long selcol[ColLast];
 static Atom clip, utf8;
 static Bool topbar = True;
 static DC *dc;
-static Item *items = NULL;
-static Item *matches, *matchend;
+static int results = 0;
+static Item *matches = NULL;
+static Item *matchend;
 static Item *prev, *curr, *next, *sel;
 static Window win;
 static XIC xic;
@@ -70,14 +72,14 @@ static int (*fstrncmp)(const char *, const char *, size_t) = strncmp;
 static char *(*fstrstr)(const char *, const char *) = strstr;
 
 int
-oldmain(int argc, char *argv[]) {
+main(int argc, char *argv[]) {
 	Bool fast = False;
 	int i;
 
 	for(i = 1; i < argc; i++)
 		/* these options take no arguments */
 		if(!strcmp(argv[i], "-v")) {      /* prints version information */
-			puts("dmenu-"VERSION", © 2006-2012 dmenu engineers, see LICENSE for details");
+			puts("dmenu-" VERSION ", © 2006-2012 dmenu engineers, see LICENSE for details");
 			exit(EXIT_SUCCESS);
 		}
 		else if(!strcmp(argv[i], "-b"))   /* appears at the bottom of the screen */
@@ -113,10 +115,8 @@ oldmain(int argc, char *argv[]) {
 
 	if(fast) {
 		grabkeyboard();
-		readstdin();
 	}
 	else {
-		readstdin();
 		grabkeyboard();
 	}
 	setup();
@@ -127,6 +127,7 @@ oldmain(int argc, char *argv[]) {
 
 void
 appenditem(Item *item, Item **list, Item **last) {
+	fprintf(stderr, "appending: %s\n", item->text);
 	if(*last)
 		(*last)->right = item;
 	else
@@ -403,45 +404,63 @@ match(void) {
 	strcpy(buf, text);
 	/* separate input text into tokens to be matched individually */
 	for(s = strtok(buf, " "); s; tokv[tokc-1] = s, s = strtok(NULL, " "))
-		if(++tokc > tokn && !(tokv = realloc(tokv, ++tokn * sizeof *tokv)))
+		if(++tokc > tokn && !(tokv = (char**)realloc(tokv, ++tokn * sizeof *tokv)))
 			eprintf("cannot realloc %u bytes\n", tokn * sizeof *tokv);
 	len = tokc ? strlen(tokv[0]) : 0;
 
-	matches = lprefix = lsubstr = matchend = prefixend = substrend = NULL;
-	for(item = items; item && item->text; item++) {
-		for(i = 0; i < tokc; i++)
-			if(!fstrstr(item->text, tokv[i]))
-				break;
-		if(i != tokc) /* not all tokens match */
-			continue;
-		/* exact matches go first, then prefixes, then substrings */
-		if(!tokc || !fstrncmp(tokv[0], item->text, len+1))
+	lprefix = lsubstr = matchend = prefixend = substrend = NULL;
+	clear(results, &matches);
+	results = locate(text, &matches);
+	fprintf(stderr, "*************************************************\n");
+	/*for(item = matches; item && item->text; item++) {*/
+		/*fprintf("%s\n", item->text);      */
+	/*}*/
+	/*fprintf("*************************************************\n");*/
+	fprintf(stderr, "-------------------------------------------------\n");
+
+	for(item = matches; item && item->text; item++) {
+		/*for(i = 0; i < tokc; i++)*/
+			/*if(!fstrstr(item->text, tokv[i]))*/
+				/*break;*/
+		/*if(i != tokc) // not all tokens match*/
+			/*continue;*/
+		// exact matches go first, then prefixes, then substrings
+		/*if(!tokc || !fstrncmp(tokv[0], item->text, len+1))*/
 			appenditem(item, &matches, &matchend);
-		else if(!fstrncmp(tokv[0], item->text, len))
-			appenditem(item, &lprefix, &prefixend);
-		else
-			appenditem(item, &lsubstr, &substrend);
+		/*else if(!fstrncmp(tokv[0], item->text, len))*/
+			/*appenditem(item, &lprefix, &prefixend);*/
+		/*else*/
+			/*appenditem(item, &lsubstr, &substrend);*/
 	}
-	if(lprefix) {
-		if(matches) {
-			matchend->right = lprefix;
-			lprefix->left = matchend;
-		}
-		else
-			matches = lprefix;
-		matchend = prefixend;
+
+	fprintf(stderr, "-------------------------------------------------\n");
+	for(item = matches; item && item->text; item++) {
+		fprintf(stderr, "%s\n", item->text);      
 	}
-	if(lsubstr) {
-		if(matches) {
-			matchend->right = lsubstr;
-			lsubstr->left = matchend;
-		}
-		else
-			matches = lsubstr;
-		matchend = substrend;
-	}
+	fprintf(stderr, "*************************************************\n");
+
+	/*if(lprefix) {*/
+		/*if(matches) {*/
+			/*matchend->right = lprefix;*/
+			/*lprefix->left = matchend;*/
+		/*}*/
+		/*else*/
+			/*matches = lprefix;*/
+		/*matchend = prefixend;*/
+	/*}*/
+	/*if(lsubstr) {*/
+		/*if(matches) {*/
+			/*matchend->right = lsubstr;*/
+			/*lsubstr->left = matchend;*/
+		/*}*/
+		/*else*/
+			/*matches = lsubstr;*/
+		/*matchend = substrend;*/
+	/*}*/
+
 	curr = sel = matches;
 	calcoffsets();
+	
 }
 
 size_t
@@ -466,29 +485,6 @@ paste(void) {
 	insert(p, (q = strchr(p, '\n')) ? q-p : (ssize_t)strlen(p));
 	XFree(p);
 	drawmenu();
-}
-
-void
-readstdin(void) {
-	char buf[sizeof text], *p, *maxstr = NULL;
-	size_t i, max = 0, size = 0;
-
-	/* read each line from stdin and add it to the item list */
-	for(i = 0; fgets(buf, sizeof buf, stdin); i++) {
-		if(i+1 >= size / sizeof *items)
-			if(!(items = realloc(items, (size += BUFSIZ))))
-				eprintf("cannot realloc %u bytes:", size);
-		if((p = strchr(buf, '\n')))
-			*p = '\0';
-		if(!(items[i].text = strdup(buf)))
-			eprintf("cannot strdup %u bytes:", strlen(buf)+1);
-		if(strlen(items[i].text) > max)
-			max = strlen(maxstr = items[i].text);
-	}
-	if(items)
-		items[i].text = NULL;
-	inputw = maxstr ? textw(dc, maxstr) : 0;
-	lines = MIN(lines, i);
 }
 
 void
@@ -611,44 +607,70 @@ usage(void) {
 	exit(EXIT_FAILURE);
 }
 
-Result locate(const char* pattern) {
-	// call shell function locate and returns output
-	Result out;
-	out.count = 0;
-	const char* search = "locate -i -l 10 ";
+int locate(const char* pattern, Item** list) {
+	const char search[] = "locate -i -l 10 ";
 	char* command = (char*)malloc(sizeof(char) * strlen(search) + strlen(pattern) + 1);
 	strcpy(command, search);
-	FILE *cmd = popen(strcat(command, pattern), "r");
-	char *s = (char*)malloc(sizeof(char) * 256);
-	char* err;
-	while (!feof(cmd)) {
-		err = fgets(s, sizeof(char) * 256, cmd);
-		if (err) {
-			out.output[out.count] = (char*)malloc(sizeof(char) * strlen(s)); // strip from '\n'
-			strcpy(out.output[out.count], s);
-			out.output[out.count][strlen(s)-1] = '\0';
-			if (out.count < 10) out.count++;
-		}
+
+	FILE *output = popen(strcat(command, (strcmp(pattern, "") ? pattern : "\"\"")), "r");
+
+	char buf[sizeof text], *p, *maxstr = NULL;
+	size_t i, max = 0, size = 0;
+	Item* tlist = *list;
+
+	for(i = 0; fgets(buf, sizeof buf, output); i++) {
+		if(i+1 >= size / sizeof *tlist)
+			if(!(tlist = realloc(tlist, (size += BUFSIZ))))
+				eprintf("cannot realloc %u bytes:", size);
+			else
+				*list = tlist;
+		
+		if((p = strchr(buf, '\n')))
+			*p = '\0';
+		
+		fprintf(stderr, "S: %s, %u\n", buf, strlen(buf));
+		if(!(tlist[i].text = strdup(buf)))
+			eprintf("cannot strdup %u bytes:", strlen(buf)+1);
+
+		if(strlen(tlist[i].text) > max)
+			max = strlen(maxstr = tlist[i].text);
+
 	}
-	pclose(cmd);
-	free(s);
+
+	if(tlist)
+		tlist[i].text = NULL;
+	inputw = maxstr ? textw(dc, maxstr) : 0;
+	lines = MIN(lines, i);
+
+	pclose(output);
 	free(command);
-	return out;
+	return i;
 }
 
-void freeResult(Result* result) {
-	unsigned int i;
-	printf("%d\n", result->count);
-	for (i = 0; i < result->count; i++)
-	{
-		printf("%s\n", result->output[i]);
-		free(result->output[i]);
+void clear(const int count, Item** list) {
+	int i;
+	if (*list) {
+		for(i = 0; i < count; i++) {
+			free((*list)[i].text);
+		}
+		free(*list);
+		*list = NULL;
 	}
 }
 
-int
-main(int argc, char *argv[]) {
-	Result rr = locate("btra");
-	freeResult(&rr);
+int aamain(){
+	int y;
+	y = locate("c", &matches);
+	clear(y, &matches);
+	printf("DUPA1\n");
+	y = locate("ca", &matches);
+	clear(y, &matches);
+	printf("DUPA2\n");
+	y = locate("car", &matches);
+	clear(y, &matches);
+	printf("DUPA3\n");
+	y = locate("carm", &matches);
+	clear(y, &matches);
+	printf("DUPA4\n");
 	return 0;
 }
