@@ -1,0 +1,26 @@
+dlocate - dynamic menu based locate gui
+====================
+dmenu is an efficient dynamic menu for X. dlocate simply displays
+locate output using dmenu 
+
+
+Requirements
+------------
+In order to build dlocate you need the Xlib header files and
+of course an installed locate binary
+
+
+Installation
+------------
+Edit config.mk to match your local setup (dlocate is installed into
+the /usr/local namespace by default).
+
+Afterwards enter the following command to build and install dlocate
+(if necessary as root):
+
+    make clean install
+
+
+Running dlocate
+-------------
+Exactly like dmenu.

@@ -1,0 +1,7 @@
+.*
+!.gitignore
+*.swp
+*.o
+cscope.out
+tags
+dlocate

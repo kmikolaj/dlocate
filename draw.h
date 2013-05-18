@@ -5,13 +5,15 @@
 
 enum { ColBG, ColFG, ColBorder, ColLast };
 
-typedef struct {
+typedef struct
+{
 	int x, y, w, h;
 	Bool invert;
 	Display *dpy;
 	GC gc;
 	Pixmap canvas;
-	struct {
+	struct
+	{
 		int ascent;
 		int descent;
 		int height;

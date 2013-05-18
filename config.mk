@@ -1,4 +1,4 @@
-# dmenu version
+# dlocate version
 VERSION = 0.1
 
 # paths
