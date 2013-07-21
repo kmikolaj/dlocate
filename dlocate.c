@@ -68,6 +68,7 @@ static Item *matchend;
 static Item *prev, *curr, *next, *sel;
 static Window win;
 static XIC xic;
+static int mon = -1;
 static Bool cs = True;
 
 static int (*fstrncmp)(const char *, const char *, size_t) = strncmp;
@@ -81,7 +82,7 @@ main(int argc, char *argv[]) {
 	for(i = 1; i < argc; i++)
 		/* these options take no arguments */
 		if(!strcmp(argv[i], "-v")) {      /* prints version information */
-			puts("dmenu-" VERSION ", © 2006-2012 dmenu engineers, see LICENSE for details");
+			puts("dlocate-" VERSION ", © 2006-2012 dmenu engineers, see LICENSE for details");
 			exit(EXIT_SUCCESS);
 		}
 		else if(!strcmp(argv[i], "-b"))   /* appears at the bottom of the screen */
@@ -98,6 +99,8 @@ main(int argc, char *argv[]) {
 		/* these options take one argument */
 		else if(!strcmp(argv[i], "-l"))   /* number of lines in vertical list */
 			lines = MIN(atoi(argv[++i]), MAXLINES);
+		else if(!strcmp(argv[i], "-m"))
+			mon = atoi(argv[++i]);
 		else if(!strcmp(argv[i], "-p"))   /* adds prompt to left of input field */
 			prompt = argv[++i];
 		else if(!strcmp(argv[i], "-fn"))  /* font or font set */
@@ -492,7 +495,9 @@ setup(void) {
 		XWindowAttributes wa;
 
 		XGetInputFocus(dc->dpy, &w, &di);
-		if(w != root && w != PointerRoot && w != None) {
+		if(mon != -1 && mon < n)
+			i = mon;
+		if(!i && w != root && w != PointerRoot && w != None) {
 			/* find top-level window containing current input focus */
 			do {
 				if(XQueryTree(dc->dpy, (pw = w), &dw, &w, &dws, &du) && dws)
@@ -507,7 +512,7 @@ setup(void) {
 					}
 		}
 		/* no focused window is on screen, so use pointer location instead */
-		if(!area && XQueryPointer(dc->dpy, root, &dw, &dw, &x, &y, &di, &di, &du))
+		if(mon == -1 && !area && XQueryPointer(dc->dpy, root, &dw, &dw, &x, &y, &di, &di, &du))
 			for(i = 0; i < n; i++)
 				if(INTERSECT(x, y, 1, 1, info[i]))
 					break;
@@ -549,8 +554,8 @@ setup(void) {
 
 void
 usage(void) {
-	fputs("usage: dmenu [-b] [-f] [-i] [-l lines] [-p prompt] [-fn font]\n"
-	      "             [-nb color] [-nf color] [-sb color] [-sf color] [-v]\n", stderr);
+	fputs("usage: dlocate [-b] [-f] [-i] [-l lines] [-p prompt] [-fn font] [-m monitor]\n"
+	      "               [-nb color] [-nf color] [-sb color] [-sf color] [-v]\n", stderr);
 	exit(EXIT_FAILURE);
 }
 
