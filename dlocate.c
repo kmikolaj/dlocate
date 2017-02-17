@@ -98,7 +98,10 @@ main(int argc, char *argv[]) {
 			usage();
 		/* these options take one argument */
 		else if(!strcmp(argv[i], "-l"))   /* number of lines in vertical list */
-			lines = MIN(atoi(argv[++i]), MAXLINES);
+		{
+			int arg = atoi(argv[++i]);
+			lines = MIN(arg, MAXLINES);
+		}
 		else if(!strcmp(argv[i], "-m"))
 			mon = atoi(argv[++i]);
 		else if(!strcmp(argv[i], "-p"))   /* adds prompt to left of input field */
